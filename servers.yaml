@@ -46,7 +46,6 @@ Resources:
           FromPort: 0
           ToPort: 65535
           CidrIp: 0.0.0.0/0
-  # Commented Since we are using launch template
   WebAppLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Properties:
@@ -73,6 +72,7 @@ Resources:
         - DeviceName: "/dev/sdk"
           Ebs:
             VolumeSize: "10"
+  # Commented Since we are using launch template
   # WebAppLaunchTemplate:
   #   Type: AWS::EC2::LaunchTemplate
   #   Properties:
