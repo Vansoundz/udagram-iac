@@ -63,7 +63,6 @@ Resources:
       ImageId: ami-06878d265978313ca
       IamInstanceProfile:
         Fn::ImportValue: !Sub "${EnvironmentName}-IAM-ROLE"
-      KeyName: udagram
       SecurityGroups:
         # - sg-06382c4a96f8fe25c
         - Ref: WebServerSecGroup
