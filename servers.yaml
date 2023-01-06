@@ -1,0 +1,165 @@
+Description: >
+  Evans Udagram project
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+  LaunchTemplateVersion:
+    Description: My launch template version
+    Type: String
+    Default: 1
+
+Resources:
+  LBSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our load balancer
+      VpcId:
+        Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+  WebServerSecGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow http to our hosts and SSH from local only
+      VpcId:
+        Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+  # Commented Since we are using launch template
+  WebAppLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          sudo apt-get update -y
+          sudo apt-get install apache2 -y
+          sudo systemctl start apache2.service
+          sudo apt install awscli -y
+          cd /var/www/html
+          sudo rm index.html
+          sudo aws s3 cp s3://evans-iac-project-2023-01/index.html .
+          sudo systemctl restart apache2.service
+      ImageId: ami-06878d265978313ca
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub "${EnvironmentName}-IAM-ROLE"
+      KeyName: udagram
+      SecurityGroups:
+        # - sg-06382c4a96f8fe25c
+        - Ref: WebServerSecGroup
+      InstanceType: t2.medium
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sdk"
+          Ebs:
+            VolumeSize: "10"
+  # WebAppLaunchTemplate:
+  #   Type: AWS::EC2::LaunchTemplate
+  #   Properties:
+  #     LaunchTemplateData:
+  #       UserData:
+  #         Fn::Base64: !Sub |
+  #           #!/bin/bash
+  #           apt-get update -y
+  #           apt-get install apache2 -y
+  #           systemctl start apache2.service
+  #           cd /var/www/html
+  #           sudo rm index.html
+  #           sudo aws s3 cp s3://evans-iac-project-2023-01/index.html .
+  #           systemctl restart apache2.service
+  #       ImageId: ami-061dbd1209944525c
+  #       IamInstanceProfile:
+  #         Fn::ImportValue: !Sub "${EnvironmentName}-IAM-ROLE"
+  #       KeyName: testkey
+  #       SecurityGroupIds:
+  #         # - sg-06382c4a96f8fe25c
+  #         - Ref: WebServerSecGroup
+  #       InstanceType: t3.small
+  #       BlockDeviceMappings:
+  #         - DeviceName: "/dev/sdk"
+  #           Ebs:
+  #             VolumeSize: "10"
+  WebAppGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PRIV-NETS"
+      LaunchConfigurationName:
+        Ref: WebAppLaunchConfig
+      # LaunchTemplate:
+      #   LaunchTemplateId: !Ref WebAppLaunchTemplate
+      #   Version: !Ref LaunchTemplateVersion
+      MinSize: "3"
+      MaxSize: "5"
+      TargetGroupARNs:
+        - Ref: WebAppTargetGroup
+  WebAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB1-SN"
+        - Fn::ImportValue: !Sub "${EnvironmentName}-PUB2-SN"
+      SecurityGroups:
+        - Ref: LBSecGroup
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: WebAppTargetGroup
+      LoadBalancerArn:
+        Ref: WebAppLB
+      Port: "80"
+      Protocol: HTTP
+  ALBListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref "WebAppTargetGroup"
+      Conditions:
+        - Field: path-pattern
+          Values: [/]
+      ListenerArn: !Ref "Listener"
+      Priority: 1
+  WebAppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 8
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${EnvironmentName}-VPCID"
+Outputs:
+  WebAppp:
+    Value: !Sub "http://${WebAppLB.DNSName}"
+    Description: Load balancer public DNS
+    Export:
+      Name: !Sub ${EnvironmentName}-LB-DNS-URL
