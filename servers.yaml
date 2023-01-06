@@ -71,7 +71,6 @@ Resources:
         - DeviceName: "/dev/sdk"
           Ebs:
             VolumeSize: "10"
-  # Commented Since we are using launch template
   # WebAppLaunchTemplate:
   #   Type: AWS::EC2::LaunchTemplate
   #   Properties:
