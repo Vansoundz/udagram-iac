@@ -8,6 +8,17 @@ Parameters:
     Description: My launch template version
     Type: String
     Default: 1
+  DefaultWebAppPort:
+    Description: The application port number our application is running on
+    Type: Number
+    Default: 80
+  KeyName: 
+    Description: KeyPair name to be used when creating EC2 instances
+    Type: String
+  InstanceType: 
+    Description: Default Instance type > default has 2vcpu 4gb ram
+    Type: String
+    Default: t2.medium
 
 Resources:
   LBSecGroup:
@@ -18,13 +29,13 @@ Resources:
         Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
+          FromPort: !Ref DefaultWebAppPort
+          ToPort: !Ref DefaultWebAppPort
           CidrIp: 0.0.0.0/0
       SecurityGroupEgress:
         - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
+          FromPort: !Ref DefaultWebAppPort
+          ToPort: !Ref DefaultWebAppPort
           CidrIp: 0.0.0.0/0
   WebServerSecGroup:
     Type: AWS::EC2::SecurityGroup
@@ -34,8 +45,8 @@ Resources:
         Fn::ImportValue: !Sub "${EnvironmentName}-VPCID"
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
+          FromPort: !Ref DefaultWebAppPort
+          ToPort: !Ref DefaultWebAppPort
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 22
@@ -58,7 +69,7 @@ Resources:
           sudo apt install awscli -y
           cd /var/www/html
           sudo rm index.html
-          sudo aws s3 cp s3://evans-iac-project-2023-01/index.html .
+          sudo aws s3 cp s3://evans-iac-project-2023-01-ac2/index.html .
           sudo systemctl restart apache2.service
       ImageId: ami-06878d265978313ca
       IamInstanceProfile:
@@ -78,21 +89,25 @@ Resources:
   #       UserData:
   #         Fn::Base64: !Sub |
   #           #!/bin/bash
-  #           apt-get update -y
-  #           apt-get install apache2 -y
-  #           systemctl start apache2.service
+  #           sudo apt-get update -y
+  #           sudo apt-get install apache2 -y
+  #           sudo systemctl start apache2.service
+  #           sudo apt install awscli -y
   #           cd /var/www/html
   #           sudo rm index.html
   #           sudo aws s3 cp s3://evans-iac-project-2023-01/index.html .
-  #           systemctl restart apache2.service
-  #       ImageId: ami-061dbd1209944525c
-  #       IamInstanceProfile:
-  #         Fn::ImportValue: !Sub "${EnvironmentName}-IAM-ROLE"
-  #       KeyName: testkey
+  #           sudo systemctl restart apache2.service
+  #       ImageId: ami-06878d265978313ca
+  #       # IamInstanceProfile:
+  #       #   Arn:
+  #       #     !GetAtt
+  #       #       - Fn::ImportValue: UdagramProject-IAM-ROLE
+  #       #       - Arn
   #       SecurityGroupIds:
   #         # - sg-06382c4a96f8fe25c
   #         - Ref: WebServerSecGroup
-  #       InstanceType: t3.small
+  #       InstanceType: !Ref InstanceType
+  #       KeyName: !Ref KeyName
   #       BlockDeviceMappings:
   #         - DeviceName: "/dev/sdk"
   #           Ebs:
@@ -107,8 +122,8 @@ Resources:
       # LaunchTemplate:
       #   LaunchTemplateId: !Ref WebAppLaunchTemplate
       #   Version: !Ref LaunchTemplateVersion
-      MinSize: "3"
-      MaxSize: "5"
+      MinSize: "4"
+      MaxSize: "8"
       TargetGroupARNs:
         - Ref: WebAppTargetGroup
   WebAppLB:
@@ -128,7 +143,7 @@ Resources:
             Ref: WebAppTargetGroup
       LoadBalancerArn:
         Ref: WebAppLB
-      Port: "80"
+      Port: !Ref DefaultWebAppPort
       Protocol: HTTP
   ALBListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
@@ -149,15 +164,15 @@ Resources:
       HealthCheckProtocol: HTTP
       HealthCheckTimeoutSeconds: 8
       HealthyThresholdCount: 2
-      Port: 80
+      Port: !Ref DefaultWebAppPort
       Protocol: HTTP
       UnhealthyThresholdCount: 5
       VpcId:
         Fn::ImportValue:
           Fn::Sub: "${EnvironmentName}-VPCID"
 Outputs:
-  WebAppp:
-    Value: !Sub "http://${WebAppLB.DNSName}"
+  WebAppUrl:
+    Value: !Join [ "://", [ "http",!GetAtt WebAppLB.DNSName] ]
     Description: Load balancer public DNS
     Export:
       Name: !Sub ${EnvironmentName}-LB-DNS-URL
